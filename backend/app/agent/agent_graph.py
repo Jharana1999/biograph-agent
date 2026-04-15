@@ -49,29 +49,91 @@ async def node_plan(state: AgentState) -> AgentState:
 
 
 # ---------------------------------------------------------------------------
-# Node 2 – Extract disease from free-text question via LLM
+# Node 2 – Scope check + disease extraction (single LLM call)
 # ---------------------------------------------------------------------------
+_SCOPE_PROMPT = """You classify biomedical research queries.
+
+Analyze the user's question and respond in exactly ONE of these formats:
+
+DISEASE: <disease or condition name>
+  Use this if the question is about drug targets, diseases, genes, proteins,
+  biomedical research, pharmacology, or any health/medical topic.
+
+OUT_OF_SCOPE
+  Use this if the question is completely unrelated to biomedical science.
+
+Examples:
+"Find drug targets for Alzheimer's disease" → DISEASE: Alzheimer's disease
+"What genes are linked to breast cancer?" → DISEASE: breast cancer
+"Tell me about Nepali festivals" → OUT_OF_SCOPE
+"What is the capital of France?" → OUT_OF_SCOPE
+"""
+
+
 async def node_extract_disease(state: AgentState) -> AgentState:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(
         model=settings.openai_model,
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Extract the disease or condition name from the user's "
-                    "biomedical research question. Return ONLY the disease name "
-                    "as a short phrase (e.g. 'Alzheimer's disease', 'Type 2 diabetes'). "
-                    "If no disease is mentioned, return 'unknown'."
-                ),
-            },
+            {"role": "system", "content": _SCOPE_PROMPT},
             {"role": "user", "content": state.question},
         ],
         temperature=0.0,
         max_tokens=60,
     )
-    extracted = (resp.choices[0].message.content or "unknown").strip().strip('"').strip("'")
+    raw = (resp.choices[0].message.content or "").strip()
+
+    if raw.upper().startswith("OUT_OF_SCOPE"):
+        state.rejected = True
+        return state
+
+    if raw.upper().startswith("DISEASE:"):
+        extracted = raw.split(":", 1)[1].strip().strip('"').strip("'")
+    else:
+        extracted = raw.strip().strip('"').strip("'")
+
+    if not extracted or extracted.lower() == "unknown":
+        state.rejected = True
+        return state
+
     state.disease_query = extracted
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Node 2b – Out-of-scope response (only reached via conditional edge)
+# ---------------------------------------------------------------------------
+_OUT_OF_SCOPE_MD = """\
+## Out of Scope
+
+This agent specializes in **biomedical target discovery** — identifying and \
+ranking potential drug targets for diseases using evidence from Open Targets, \
+Ensembl, UniProt, and PubMed.
+
+Your question doesn't appear to be about biomedical research or drug discovery.
+
+### Try questions like
+- "Find drug targets for Alzheimer's disease"
+- "What are the most promising therapeutic targets for Type 2 diabetes?"
+- "Identify potential drug targets for Parkinson's disease"
+- "What genes are associated with breast cancer and could be drug targets?"
+"""
+
+
+async def node_reject_response(state: AgentState) -> AgentState:
+    state.answer_markdown = _OUT_OF_SCOPE_MD
+    state.evaluation = {
+        "passed": False,
+        "checks": {
+            "scope": {
+                "label": "Query Scope",
+                "description": "Question was not recognized as a biomedical research query",
+                "value": "out_of_scope",
+                "pass": False,
+            },
+        },
+        "notes": None,
+    }
     return state
 
 
@@ -545,7 +607,25 @@ def _snapshot_graph(state: AgentState) -> tuple[list[dict], list[dict]]:
 # ---------------------------------------------------------------------------
 async def node_generate_explanation(state: AgentState) -> AgentState:
     if not state.ranked_targets:
-        state.answer_markdown = "No targets found."
+        if state.disease_query and not state.disease_id:
+            state.answer_markdown = (
+                f"## No Disease Match Found\n\n"
+                f"I couldn't find **\"{state.disease_query}\"** in the Open Targets "
+                f"database.\n\n"
+                f"### Suggestions\n"
+                f"- Try using a more specific disease name "
+                f"(e.g., \"Alzheimer's disease\" instead of \"memory loss\")\n"
+                f"- Check for spelling and use the standard disease name\n"
+                f"- Try a broader category "
+                f"(e.g., \"lung cancer\" instead of a rare subtype)\n"
+            )
+        else:
+            state.answer_markdown = (
+                "## No Targets Found\n\n"
+                "The pipeline completed but did not identify any ranked targets "
+                "for this query. This may happen for very rare diseases or "
+                "conditions with limited data in Open Targets.\n"
+            )
         return state
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -690,10 +770,15 @@ async def node_evaluate(state: AgentState) -> AgentState:
 # ---------------------------------------------------------------------------
 # Graph builder + runner
 # ---------------------------------------------------------------------------
+def _route_after_extract(state: AgentState) -> str:
+    return "reject" if state.rejected else "continue"
+
+
 def build_langgraph() -> Any:
     g = StateGraph(AgentState)
     g.add_node("Plan", node_plan)
     g.add_node("ExtractDisease", node_extract_disease)
+    g.add_node("RejectResponse", node_reject_response)
     g.add_node("SearchDisease", node_search_disease)
     g.add_node("FetchAssociations", node_fetch_associations)
     g.add_node("EnrichKnownDrugs", node_enrich_known_drugs)
@@ -707,7 +792,12 @@ def build_langgraph() -> Any:
 
     g.set_entry_point("Plan")
     g.add_edge("Plan", "ExtractDisease")
-    g.add_edge("ExtractDisease", "SearchDisease")
+    g.add_conditional_edges(
+        "ExtractDisease",
+        _route_after_extract,
+        {"reject": "RejectResponse", "continue": "SearchDisease"},
+    )
+    g.add_edge("RejectResponse", END)
     g.add_edge("SearchDisease", "FetchAssociations")
     g.add_edge("FetchAssociations", "EnrichKnownDrugs")
     g.add_edge("EnrichKnownDrugs", "ResolveGenes")

@@ -3,7 +3,7 @@
     <div class="brand">BioGraph Agent</div>
     <div class="meta" *ngIf="result">
       <span class="pill">{{ result.run_id }}</span>
-      <span class="pill" [class.pass]="result.evaluation.passed" [class.fail]="!result.evaluation.passed">
+      <span *ngIf="hasResults" class="pill" [class.pass]="result.evaluation.passed" [class.fail]="!result.evaluation.passed">
         {{ result.evaluation.passed ? 'PASS' : 'REVIEW' }}
       </span>
     </div>
@@ -30,7 +30,15 @@
     <span>Querying Open Targets, Ensembl, PubMed, building knowledge graph, ranking targets…</span>
   </div>
 
-  <div class="dashboard" *ngIf="result && !loading">
+  <!-- Out-of-scope / no-results: single answer panel, no tabs -->
+  <div class="dashboard" *ngIf="result && !loading && !hasResults">
+    <section class="panel scope-panel">
+      <div class="answer-body" [innerHTML]="answerHtml"></div>
+    </section>
+  </div>
+
+  <!-- Normal results: full tabbed dashboard -->
+  <div class="dashboard" *ngIf="result && !loading && hasResults">
     <nav class="tabs">
       <button [class.active]="activeTab === 'chat'" (click)="setTab('chat')">Results</button>
       <button [class.active]="activeTab === 'graph'" (click)="setTab('graph')">Knowledge Graph</button>
@@ -133,15 +141,10 @@
           </span>
         </h2>
         <div class="eval-grid">
-          <div class="eval-card" *ngFor="let key of evalKeys()" [class.eval-pass]="evalCheck(key).pass" [class.eval-warn]="!evalCheck(key).pass">
-            <div class="eval-icon">{{ evalCheck(key).pass ? '&#10003;' : '&#9888;' }}</div>
-            <div class="eval-body">
-              <div class="eval-name">{{ evalCheck(key).label || formatCheckName(key) }}</div>
-              <div class="eval-desc">{{ evalCheck(key).description }}</div>
-              <div class="eval-status-tag" [class.tag-pass]="evalCheck(key).pass" [class.tag-warn]="!evalCheck(key).pass">
-                {{ evalCheck(key).pass ? 'Passed' : 'Needs review' }}
-              </div>
-            </div>
+          <div class="eval-card" *ngFor="let key of evalKeys()" [class.eval-pass]="evalCheck(key).pass" [class.eval-fail]="!evalCheck(key).pass">
+            <div class="eval-status">{{ evalCheck(key).pass ? 'PASS' : 'FAIL' }}</div>
+            <div class="eval-name">{{ evalCheck(key).label || formatCheckName(key) }}</div>
+            <pre class="eval-val">{{ evalCheck(key).value | json }}</pre>
           </div>
         </div>
       </section>

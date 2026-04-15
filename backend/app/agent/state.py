@@ -11,6 +11,9 @@ class AgentState:
     question: str
     run_id: str
 
+    # Scope gating
+    rejected: bool = False
+
     disease_query: str | None = None
     disease_id: str | None = None
     disease_name: str | None = None

@@ -125,6 +125,10 @@ export class AppComponent implements OnDestroy {
 
   closeEntity(): void { this.selectedEntity = null; }
 
+  get hasResults(): boolean {
+    return !!(this.result && this.result.ranked_targets.length > 0);
+  }
+
   evalKeys(): string[] {
     return this.result ? Object.keys(this.result.evaluation.checks) : [];
   }
