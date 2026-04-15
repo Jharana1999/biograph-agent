@@ -1,0 +1,12 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+pydantic==2.11.4
+pydantic-settings==2.9.1
+httpx==0.28.1
+langgraph==0.2.74
+openai==1.77.0
+sqlalchemy==2.0.40
+asyncpg==0.30.0
+neo4j==5.28.1
+tenacity==9.1.2
+python-dateutil==2.9.0.post0
