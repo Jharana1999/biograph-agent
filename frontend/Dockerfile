@@ -8,8 +8,7 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine
-ENV BACKEND_API_URL=https://biograph-agent-backend.onrender.com/api
-COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/frontend/browser /usr/share/nginx/html
 
 EXPOSE 80
