@@ -12,6 +12,7 @@ import { marked } from 'marked';
 import { ApiService } from './api.service';
 import type {
   ChatResponse,
+  EvalCheck,
   GraphNode,
   GraphEdge,
   RankedTarget,
@@ -58,6 +59,7 @@ export class AppComponent implements OnDestroy {
 
   selectedEntity: EntityProfile | null = null;
   entityLoading = false;
+  showPlan = false;
 
   private sim: d3.Simulation<SimNode, SimLink> | null = null;
 
@@ -127,8 +129,8 @@ export class AppComponent implements OnDestroy {
     return this.result ? Object.keys(this.result.evaluation.checks) : [];
   }
 
-  evalCheck(key: string): any {
-    return this.result?.evaluation.checks[key];
+  evalCheck(key: string): EvalCheck {
+    return this.result?.evaluation.checks[key] ?? { pass: false, value: null };
   }
 
   formatCheckName(key: string): string {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +15,19 @@ from app.db.neo4j import ensure_constraints, get_driver
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await init_db()
+    driver = get_driver()
+    try:
+        await ensure_constraints(driver)
+    finally:
+        driver.close()
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,16 +44,6 @@ app.include_router(api_router, prefix=settings.api_prefix)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content={"detail": str(exc)})
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    await init_db()
-    driver = get_driver()
-    try:
-        await ensure_constraints(driver)
-    finally:
-        driver.close()
 
 
 @app.get("/healthz")

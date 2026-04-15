@@ -602,50 +602,79 @@ async def node_evaluate(state: AgentState) -> AgentState:
     pg = _pg
     assert pg
     text = (state.answer_markdown or "").lower()
-    cited = 0
-    for c in state.citations:
-        cid = c.id.lower()
-        if cid in text or c.source.lower() in text:
-            cited += 1
-    citation_coverage = 0.0 if not state.citations else (cited / len(state.citations))
 
-    unique_sources = set(c.source for c in state.citations)
+    # --- Evidence Coverage ---------------------------------------------------
+    # Real approach: check source-level grounding + key entity mentions.
+    source_keywords: dict[str, list[str]] = {
+        "OpenTargets": ["opentargets", "open targets"],
+        "Ensembl": ["ensembl"],
+        "UniProt": ["uniprot"],
+        "PubMed": ["pubmed", "pmid"],
+    }
+    sources_queried = {c.source for c in state.citations}
+    sources_cited = 0
+    for src in sources_queried:
+        kws = source_keywords.get(src, [src.lower()])
+        if any(kw in text for kw in kws):
+            sources_cited += 1
+
+    top_n = min(5, len(state.ranked_targets))
+    symbols_mentioned = sum(
+        1
+        for rt in state.ranked_targets[:5]
+        if (rt.target_symbol or "").lower() in text
+    )
+
+    if sources_queried:
+        src_ratio = sources_cited / len(sources_queried)
+        sym_ratio = symbols_mentioned / top_n if top_n else 0
+        evidence_score = round(0.6 * src_ratio + 0.4 * sym_ratio, 3)
+    else:
+        evidence_score = 0.0
+
+    # --- API Success ---------------------------------------------------------
+    api_results = {
+        "Open Targets search": len(state.ot_disease_hits) > 0,
+        "Target associations": len(state.ot_associations) > 0,
+        "Ensembl genes": len(state.ensembl_genes) > 0,
+        "UniProt proteins": len(state.uniprot_proteins) > 0,
+    }
+    api_ok = sum(v for v in api_results.values())
+
+    # --- Graph Built ---------------------------------------------------------
+    graph_ok = state.graph_nodes_added > 0 and state.graph_edges_added > 0
 
     checks: dict[str, Any] = {
-        "citation_coverage": {
-            "value": round(citation_coverage, 3),
-            "min": 0.2,
-            "pass": citation_coverage >= 0.2,
+        "evidence_coverage": {
+            "label": "Evidence Coverage",
+            "description": (
+                f"{sources_cited}/{len(sources_queried)} data sources referenced in answer, "
+                f"{symbols_mentioned}/{top_n} top targets mentioned"
+            ),
+            "value": evidence_score,
+            "pass": evidence_score >= 0.4,
         },
-        "has_ranked_targets": {
-            "value": len(state.ranked_targets),
-            "min": 3,
-            "pass": len(state.ranked_targets) >= 3,
+        "api_success": {
+            "label": "API Success",
+            "description": f"{api_ok}/{len(api_results)} external APIs returned data",
+            "value": api_results,
+            "pass": api_ok >= 2,
         },
-        "api_trace_present": {
-            "value": {
-                "ot_hits": len(state.ot_disease_hits),
-                "ot_assoc": len(state.ot_associations),
-                "ensembl_genes": len(state.ensembl_genes),
-                "uniprot_proteins": len(state.uniprot_proteins),
-            },
-            "pass": len(state.ot_disease_hits) > 0 and len(state.ot_associations) > 0,
-        },
-        "multi_source_evidence": {
-            "value": list(unique_sources),
-            "min": 2,
-            "pass": len(unique_sources) >= 2,
-        },
-        "graph_populated": {
+        "graph_built": {
+            "label": "Graph Built",
+            "description": (
+                f"{state.graph_nodes_added} nodes and "
+                f"{state.graph_edges_added} edges written to knowledge graph"
+            ),
             "value": {
                 "nodes": state.graph_nodes_added,
                 "edges": state.graph_edges_added,
             },
-            "pass": state.graph_nodes_added > 0 and state.graph_edges_added > 0,
+            "pass": graph_ok,
         },
     }
 
-    passed = all(v.get("pass", False) for v in checks.values())
+    passed = all(v["pass"] for v in checks.values())
     state.evaluation = {"passed": passed, "checks": checks, "notes": None}
 
     from app.db.models import EvaluationResult

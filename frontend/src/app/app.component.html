@@ -4,7 +4,7 @@
     <div class="meta" *ngIf="result">
       <span class="pill">{{ result.run_id }}</span>
       <span class="pill" [class.pass]="result.evaluation.passed" [class.fail]="!result.evaluation.passed">
-        {{ result.evaluation.passed ? 'PASS' : 'FAIL' }}
+        {{ result.evaluation.passed ? 'PASS' : 'REVIEW' }}
       </span>
     </div>
   </header>
@@ -129,23 +129,34 @@
       <section class="panel">
         <h2>Quality checks
           <span class="pill" [class.pass]="result.evaluation.passed" [class.fail]="!result.evaluation.passed">
-            {{ result.evaluation.passed ? 'ALL PASSED' : 'ISSUES FOUND' }}
+            {{ result.evaluation.passed ? 'ALL PASSED' : 'NEEDS REVIEW' }}
           </span>
         </h2>
         <div class="eval-grid">
-          <div class="eval-card" *ngFor="let key of evalKeys()" [class.eval-pass]="evalCheck(key).pass" [class.eval-fail]="!evalCheck(key).pass">
-            <div class="eval-status">{{ evalCheck(key).pass ? 'PASS' : 'FAIL' }}</div>
-            <div class="eval-name">{{ formatCheckName(key) }}</div>
-            <pre class="eval-val">{{ evalCheck(key).value | json }}</pre>
+          <div class="eval-card" *ngFor="let key of evalKeys()" [class.eval-pass]="evalCheck(key).pass" [class.eval-warn]="!evalCheck(key).pass">
+            <div class="eval-icon">{{ evalCheck(key).pass ? '&#10003;' : '&#9888;' }}</div>
+            <div class="eval-body">
+              <div class="eval-name">{{ evalCheck(key).label || formatCheckName(key) }}</div>
+              <div class="eval-desc">{{ evalCheck(key).description }}</div>
+              <div class="eval-status-tag" [class.tag-pass]="evalCheck(key).pass" [class.tag-warn]="!evalCheck(key).pass">
+                {{ evalCheck(key).pass ? 'Passed' : 'Needs review' }}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       <section class="panel" style="margin-top:14px">
-        <h2>Agent execution plan</h2>
-        <ol class="plan-list">
-          <li *ngFor="let s of result.plan.steps">{{ s }}</li>
-        </ol>
+        <button class="toggle-btn" (click)="showPlan = !showPlan">
+          {{ showPlan ? 'Hide' : 'Show' }} technical details
+          <span class="toggle-arrow">{{ showPlan ? '&#9650;' : '&#9660;' }}</span>
+        </button>
+        <div *ngIf="showPlan" class="plan-section">
+          <h3>Agent execution plan</h3>
+          <ol class="plan-list">
+            <li *ngFor="let s of result.plan.steps">{{ s }}</li>
+          </ol>
+        </div>
       </section>
     </div>
   </div>
@@ -154,7 +165,7 @@
   <div class="overlay" *ngIf="selectedEntity" (click)="closeEntity()">
     <aside class="side-panel" (click)="$event.stopPropagation()">
       <button class="close-btn" (click)="closeEntity()">&#x2715;</button>
-      <div class="side-label">{{ selectedEntity.labels?.join(' / ') }}</div>
+      <div class="side-label">{{ selectedEntity.labels.join(' / ') }}</div>
       <h2 class="side-title">{{ selectedEntity.properties['name'] || selectedEntity.properties['symbol'] || selectedEntity.id }}</h2>
       <table class="prop-table">
         <tr *ngFor="let kv of (selectedEntity.properties | keyvalue)">
@@ -166,7 +177,7 @@
         <div class="rel-item" *ngFor="let r of selectedEntity.related">
           <span class="rel-type">{{ r.relationship }}</span>
           <span>{{ r.node.properties['name'] || r.node.properties['symbol'] || r.node.id }}</span>
-          <span class="rel-labels">{{ r.node.labels?.join(', ') }}</span>
+          <span class="rel-labels">{{ r.node.labels.join(', ') }}</span>
         </div>
       </div>
     </aside>

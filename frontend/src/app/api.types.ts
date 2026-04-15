@@ -45,9 +45,16 @@ export type GraphSummary = {
   edges: GraphEdge[];
 };
 
+export type EvalCheck = {
+  label?: string;
+  description?: string;
+  value: unknown;
+  pass: boolean;
+};
+
 export type EvaluationSummary = {
   passed: boolean;
-  checks: Record<string, any>;
+  checks: Record<string, EvalCheck>;
   notes?: string | null;
 };
 
