@@ -40,14 +40,14 @@ const NODE_COLORS: Record<string, string> = {
   Publication: '#a29bfe',
 };
 
+const SESSION_KEY = 'biograph_session_id';
+
 @Component({
   selector: 'app-root',
   imports: [CommonModule, FormsModule],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
 })
-const SESSION_KEY = 'biograph_session_id';
-
 export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('graphSvg', { static: false }) graphSvg!: ElementRef<SVGSVGElement>;
 
