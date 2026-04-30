@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -21,8 +22,16 @@ from app.integrations.uniprot import UniProtClient
 from app.schemas.common import Citation, RankedTarget, EvidenceItem
 
 
-_http: httpx.AsyncClient | None = None
-_pg: AsyncSession | None = None
+_http_var: ContextVar[httpx.AsyncClient | None] = ContextVar("_http", default=None)
+_pg_var: ContextVar[AsyncSession | None] = ContextVar("_pg", default=None)
+
+
+def _get_http_pg() -> tuple[httpx.AsyncClient, AsyncSession]:
+    http = _http_var.get()
+    pg = _pg_var.get()
+    if http is None or pg is None:
+        raise RuntimeError("Agent context not initialised; must be called inside run_agent")
+    return http, pg  # type: ignore[return-value]
 
 
 def new_run_id() -> str:
@@ -141,8 +150,7 @@ async def node_reject_response(state: AgentState) -> AgentState:
 # Node 3 – Search disease on Open Targets
 # ---------------------------------------------------------------------------
 async def node_search_disease(state: AgentState) -> AgentState:
-    http, pg = _http, _pg
-    assert http and pg
+    http, pg = _get_http_pg()
     ot = OpenTargetsClient(http)
     hits = await ot.search_disease(state.disease_query or state.question, size=5)
     state.ot_disease_hits = hits
@@ -176,8 +184,7 @@ async def node_search_disease(state: AgentState) -> AgentState:
 async def node_fetch_associations(state: AgentState) -> AgentState:
     if not state.disease_id:
         return state
-    http, pg = _http, _pg
-    assert http and pg
+    http, pg = _get_http_pg()
     ot = OpenTargetsClient(http)
     rows = await ot.disease_associations(state.disease_id, size=25)
     state.ot_associations = rows
@@ -196,8 +203,7 @@ async def node_fetch_associations(state: AgentState) -> AgentState:
 # Node 5 – Enrich with known drugs
 # ---------------------------------------------------------------------------
 async def node_enrich_known_drugs(state: AgentState) -> AgentState:
-    http, pg = _http, _pg
-    assert http and pg
+    http, pg = _get_http_pg()
     ot = OpenTargetsClient(http)
     for row in state.ot_associations[:15]:
         target = row.get("target") or {}
@@ -224,8 +230,7 @@ async def node_enrich_known_drugs(state: AgentState) -> AgentState:
 # Node 6 – Resolve genes via Ensembl
 # ---------------------------------------------------------------------------
 async def node_resolve_genes(state: AgentState) -> AgentState:
-    http, pg = _http, _pg
-    assert http and pg
+    http, pg = _get_http_pg()
     ens = EnsemblClient(http)
     seen: set[str] = set()
     for row in state.ot_associations[:10]:
@@ -271,8 +276,7 @@ async def node_resolve_genes(state: AgentState) -> AgentState:
 # Node 7 – Resolve proteins via UniProt
 # ---------------------------------------------------------------------------
 async def node_resolve_proteins(state: AgentState) -> AgentState:
-    http, pg = _http, _pg
-    assert http and pg
+    http, pg = _get_http_pg()
     up = UniProtClient(http)
     for tid, gene in list(state.ensembl_genes.items())[:10]:
         accession = _extract_uniprot_accession(gene)
@@ -324,8 +328,7 @@ def _uniprot_protein_name(protein: dict[str, Any]) -> str:
 async def node_pubmed_for_top_targets(state: AgentState) -> AgentState:
     if not state.disease_name:
         return state
-    http, pg = _http, _pg
-    assert http and pg
+    http, pg = _get_http_pg()
     pm = PubMedClient(http)
     top_symbols: list[str] = []
     for row in state.ot_associations[:8]:
@@ -440,8 +443,7 @@ async def node_rank(state: AgentState) -> AgentState:
 async def node_build_graph(state: AgentState) -> AgentState:
     if not state.disease_id:
         return state
-    pg = _pg
-    assert pg
+    _, pg = _get_http_pg()
     driver = get_driver()
     writer = GraphWriter(driver)
 
@@ -679,8 +681,7 @@ Available citations:
 # Node 12 – Evaluate
 # ---------------------------------------------------------------------------
 async def node_evaluate(state: AgentState) -> AgentState:
-    pg = _pg
-    assert pg
+    _, pg = _get_http_pg()
     text = (state.answer_markdown or "").lower()
 
     # --- Evidence Coverage ---------------------------------------------------
@@ -812,18 +813,17 @@ def build_langgraph() -> Any:
 
 
 async def run_agent(*, question: str, pg: AsyncSession) -> AgentState:
-    global _http, _pg
     run_id = new_run_id()
     state = AgentState(question=question, run_id=run_id)
     graph = build_langgraph()
     async with httpx.AsyncClient(timeout=settings.http_timeout_s) as http:
-        _http = http
-        _pg = pg
+        tok_http = _http_var.set(http)
+        tok_pg = _pg_var.set(pg)
         try:
             result = await graph.ainvoke(state)
         finally:
-            _http = None
-            _pg = None
+            _http_var.reset(tok_http)
+            _pg_var.reset(tok_pg)
 
     if isinstance(result, AgentState):
         return result

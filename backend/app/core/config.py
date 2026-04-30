@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     neo4j_password: str = "neo4jpass"
 
     # API timeouts
-    http_timeout_s: float = 30.0
+    http_timeout_s: float = 45.0
 
     # Frontend origin(s) allowed by CORS. Comma-separated.
     cors_origins: str = "http://localhost:4200"

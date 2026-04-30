@@ -1,11 +1,14 @@
 <div class="page">
   <header class="topbar">
     <div class="brand">BioGraph Agent</div>
-    <div class="meta" *ngIf="result">
-      <span class="pill">{{ result.run_id }}</span>
-      <span *ngIf="hasResults" class="pill" [class.pass]="result.evaluation.passed" [class.fail]="!result.evaluation.passed">
-        {{ result.evaluation.passed ? 'PASS' : 'REVIEW' }}
-      </span>
+    <div class="meta">
+      <ng-container *ngIf="result">
+        <span class="pill">{{ result.run_id }}</span>
+        <span *ngIf="hasResults" class="pill" [class.pass]="result.evaluation.passed" [class.fail]="!result.evaluation.passed">
+          {{ result.evaluation.passed ? 'PASS' : 'REVIEW' }}
+        </span>
+      </ng-container>
+      <button *ngIf="result || sessionId" class="btn-new-chat" (click)="newChat()">+ New Chat</button>
     </div>
   </header>
 

@@ -14,7 +14,8 @@ $danger: #f87171;
 /* ── Top bar ─────────────────────────── */
 .topbar { display:flex; align-items:center; justify-content:space-between; padding:10px 24px; border-bottom:1px solid $border; background:rgba(255,255,255,0.02); position:sticky; top:0; z-index:100; backdrop-filter:blur(12px); }
 .brand { font:800 16px/1 'Inter',sans-serif; background:linear-gradient(135deg,$accent,$success); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-.meta { display:flex; gap:6px; }
+.meta { display:flex; align-items:center; gap:6px; }
+.btn-new-chat { margin-left:8px; padding:4px 12px; border-radius:99px; border:1px solid rgba($accent,.35); background:rgba($accent,.08); color:$accent; font-size:11px; font-weight:600; cursor:pointer; transition:all .12s; &:hover { background:rgba($accent,.18); border-color:rgba($accent,.6); } }
 .pill { font-size:10px; padding:3px 8px; border-radius:99px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1); font-weight:600; letter-spacing:.3px;
   &.pass { border-color:rgba($success,.5); color:$success; }
   &.fail { border-color:rgba($danger,.5); color:$danger; }

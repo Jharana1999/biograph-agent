@@ -2,6 +2,7 @@ import {
   Component,
   ElementRef,
   ViewChild,
+  OnInit,
   OnDestroy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -45,7 +46,9 @@ const NODE_COLORS: Record<string, string> = {
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
 })
-export class AppComponent implements OnDestroy {
+const SESSION_KEY = 'biograph_session_id';
+
+export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('graphSvg', { static: false }) graphSvg!: ElementRef<SVGSVGElement>;
 
   question = "Find possible drug targets for Alzheimer's disease and explain why they are promising.";
@@ -68,8 +71,26 @@ export class AppComponent implements OnDestroy {
     private readonly sanitizer: DomSanitizer,
   ) {}
 
+  ngOnInit(): void {
+    const stored = localStorage.getItem(SESSION_KEY);
+    if (stored) {
+      this.sessionId = parseInt(stored, 10) || null;
+    }
+  }
+
   ngOnDestroy(): void {
     this.sim?.stop();
+  }
+
+  newChat(): void {
+    this.sessionId = null;
+    this.result = null;
+    this.answerHtml = null;
+    this.selectedEntity = null;
+    this.error = null;
+    this.question = '';
+    this.activeTab = 'chat';
+    localStorage.removeItem(SESSION_KEY);
   }
 
   submit(): void {
@@ -85,6 +106,7 @@ export class AppComponent implements OnDestroy {
       next: (res) => {
         this.result = res;
         this.sessionId = res.session_id;
+        localStorage.setItem(SESSION_KEY, String(res.session_id));
         this.answerHtml = this.sanitizer.bypassSecurityTrustHtml(
           marked.parse(res.answer_markdown) as string,
         );
